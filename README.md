@@ -1,4 +1,4 @@
-# Project Title
+# Gait Mechanics
 
 One-liner.
 
@@ -9,4 +9,3 @@ One-liner.
 ## Data
 
 ## Citation
-# gait_mechanics
