@@ -8,12 +8,6 @@ from tqdm import tqdm
 from scipy.stats import pearsonr
 from scipy.linalg import subspace_angles
 
-# Load trial data
-with open('../../out/clustering/trials_all.pkl', 'rb') as f:
-    trials_all = pickle.load(f)
-with open('../../out/clustering/trials_metadata.pkl', 'rb') as f:
-    trials_metadata = pickle.load(f)
-
 def corr_matrix_for_trial(trial, n_joints):
     """
     Compute Pearson coordination matrix for a single trial.
@@ -143,14 +137,14 @@ def spectral_features_C(C_all, k_subspace=3):
         feats (dict): dictionary of the following np.ndarrays
             - 'spec_entropy': [n_trials,] spectral entropy of eigenvalues
             - 'part_ratio': [n_trials,] participation ratio of eigenvalues
-            - 'k_var80': [n_trials,] number of eigenmodes to explain 80% variance
+            - 'k_var90': [n_trials,] number of eigenmodes to explain 90% variance
             - 'eigvals': [n_trials, n_joints] eigenvalues (descending)
             - 'U_topk': [n_trials, n_joints, k_subspace] top-k eigenvectors for each trial
     """
     n_trials, n_joints, _ = C_all.shape
     spec_entropy = np.zeros(n_trials)
     part_ratio = np.zeros(n_trials)
-    k_var80 = np.zeros(n_trials, dtype=int)
+    k_var90 = np.zeros(n_trials, dtype=int)
     eigvals_all = np.zeros((n_trials, n_joints))
     U_list = []
 
@@ -161,13 +155,13 @@ def spectral_features_C(C_all, k_subspace=3):
         eigvals_all[i] = vals_desc
         spec_entropy[i] = spectral_entropy(vals_desc)
         part_ratio[i] = participation_ratio(vals_desc)
-        k_var80[i] = k_for_variance(vals_desc, var_thresh=0.8)
+        k_var90[i] = k_for_variance(vals_desc, var_thresh=0.9)
         U_list.append(U_k)
     
     return {
         'spec_entropy': spec_entropy,
         'part_ratio': part_ratio,
-        'k_var80': k_var80,
+        'k_var90': k_var90,
         'eigvals': eigvals_all,
         'U_topk': np.stack(U_list, axis=0)
     }
