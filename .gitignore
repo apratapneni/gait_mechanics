@@ -1,0 +1,37 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Envs & deps
+.venv/
+env/
+.conda/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data & outputs (treat raw data as immutable elsewhere)
+data/
+outputs/
+results/
+*.csv
+*.tsv
+*.parquet
+*.h5
+*.zip
+
+# Logs & caches
+*.log
+logs/
+.cache/
+
