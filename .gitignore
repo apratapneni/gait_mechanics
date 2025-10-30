@@ -19,6 +19,7 @@ dist/
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb
 
 # Data & outputs (treat raw data as immutable elsewhere)
 data/
