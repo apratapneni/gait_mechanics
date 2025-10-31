@@ -8,7 +8,7 @@ from tqdm import tqdm
 from scipy.stats import pearsonr
 from scipy.linalg import subspace_angles
 
-def corr_matrix_for_trial(trial, n_joints):
+def corr_matrix_for_trial(trial: np.ndarray, n_joints: int) -> np.ndarray:
     """
     Compute Pearson coordination matrix for a single trial.
     
@@ -27,7 +27,7 @@ def corr_matrix_for_trial(trial, n_joints):
     np.fill_diagonal(C, 1.0)  # set diagonal to 1
     return C
 
-def build_coord_matrices(all_trials, joint_names=['Trunk1_COG','Trunk2_COG','NeckBase','TrunkPelvis','MidBack','Rshoulder_PROX','Lshoulder_PROX','RHipJnt','RKneeJnt','RAnkJnt','LHipJnt','LKneeJnt','LAnkJnt'], return_adj=True):
+def build_coord_matrices(all_trials: list, joint_names: list = ['Trunk1_COG','Trunk2_COG','NeckBase','TrunkPelvis','MidBack','Rshoulder_PROX','Lshoulder_PROX','RHipJnt','RKneeJnt','RAnkJnt','LHipJnt','LKneeJnt','LAnkJnt'], return_adj: bool = True) -> tuple:
     """
     Build per-trial coordination matrices (pearson correlation) and optionally adjacency matrices.
     
@@ -59,31 +59,31 @@ def build_coord_matrices(all_trials, joint_names=['Trunk1_COG','Trunk2_COG','Nec
 
 # ––––––– Helpers ––––––––
 
-def _safe_probs(lmbda, eps=1e-12):
+def _safe_probs(lmbda: np.ndarray, eps=1e-12) -> np.ndarray:
     """Safely converts eigenvalues to a probability distribution."""
     s = np.clip(lmbda, eps, None)
     probs = s / np.sum(s)
     return probs
 
-def participation_ratio(lmbda, eps=1e-12):
+def participation_ratio(lmbda: np.ndarray, eps=1e-12) -> float:
     """Computes the participation ratio of a set of eigenvalues."""
     s1 = np.sum(lmbda)
     s2 = np.sum(lmbda**2)
     return (s1 ** 2) / max(s2, eps)
 
-def spectral_entropy(lmbda, eps=1e-12):
+def spectral_entropy(lmbda: np.ndarray, eps=1e-12) -> float:
     """Computes the spectral entropy of a set of eigenvalues."""
     probs = _safe_probs(lmbda, eps)
     return -np.sum(probs * np.log(probs + eps)) # using nats for now (switch to np.log2 for bits for explainability maybe?)
 
-def k_for_variance(lmbda, var_thresh=0.8):
+def k_for_variance(lmbda: np.ndarray, var_thresh=0.8) -> int:
     """Computes the number of eigenmodes needed to explain a given variance threshold."""
     p = _safe_probs(lmbda)
     cumulative = np.cumsum(p)
     k = np.searchsorted(cumulative, var_thresh) + 1  # +1 for 1-based count
     return k
 
-def topk_eig(C_or_L, k, largest=True):
+def topk_eig(C_or_L: np.ndarray, k: int, largest: bool = True) -> tuple:
     """Computes the top-k eigenvalues and eigenvectors of a covariance or Laplacian matrix."""
     vals, vecs = eigh(C_or_L) # eigh returns in ascending order
     if largest:
@@ -91,20 +91,20 @@ def topk_eig(C_or_L, k, largest=True):
         vecs = vecs[:, ::-1]
     return vals[:k], vecs[:, :k], vals, vecs
 
-def normalized_laplacian(W, eps=1e-12):
+def normalized_laplacian(W: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """Computes the normalized graph Laplacian from an adjacency matrix W."""
     d = np.sum(W, axis=1)
     D_inv_sqrt = np.diag(1.0 / np.sqrt(np.clip(d, eps, None)))
     L = np.eye(W.shape[0]) - D_inv_sqrt @ W @ D_inv_sqrt # L = I - D^(-1/2) W D^(-1/2)
     return L
 
-def principal_angle_deg(U, U_ref):
+def principal_angle_deg(U: np.ndarray, U_ref: np.ndarray) -> float:
     """Computes the principal angle (in degrees) between two k-dimensional subspaces spanned by U and U_ref."""
     angles_rad = subspace_angles(U, U_ref) # this is in radians
     max_angle_rad = np.max(angles_rad)
     return np.degrees(max_angle_rad) if angles_rad.size > 0 else np.nan
 
-def grassmann_mean_subspace(U_list, k):
+def grassmann_mean_subspace(U_list: list, k: int) -> np.ndarray:
     """Computes the mean subspace on the Grassmann manifold from a list of orthonormal bases U_list."""
     if len(U_list) == 0:
         return None
@@ -116,7 +116,7 @@ def grassmann_mean_subspace(U_list, k):
     _, V_k, _, _ = topk_eig(P_mean, k, largest=True)
     return V_k
 
-def align_eigenvector_signs(U, U_ref):
+def align_eigenvector_signs(U: np.ndarray, U_ref: np.ndarray) -> np.ndarray:
     """Aligns the signs of eigenvectors in U to match those in U_ref."""
     U_aligned = U.copy()
     m = min(U.shape[1], U_ref.shape[1])
@@ -126,7 +126,7 @@ def align_eigenvector_signs(U, U_ref):
     return U_aligned
 
 # –––––– Spectral features: CORRELATION matrices ––––––
-def spectral_features_C(C_all, k_subspace=3):
+def spectral_features_C(C_all: np.ndarray, k_subspace: int = 3) -> dict:
     """
     Compute spectral features from correlation matrices C_all.
     
@@ -167,7 +167,7 @@ def spectral_features_C(C_all, k_subspace=3):
     }
 
 # –––––– Spectral features: ADJACENCY matrices (via Laplacian) ––––––
-def spectral_features_W(W_all, k_subspace=3, eigengap_K_max=6):
+def spectral_features_W(W_all: np.ndarray, k_subspace: int = 3, eigengap_K_max: int = 6) -> dict:
     """
     Compute spectral features from adjacency matrices W_all via normalized Laplacian.
     
@@ -211,7 +211,7 @@ def spectral_features_W(W_all, k_subspace=3, eigengap_K_max=6):
     }
 
 # –––––– Group-reference subspaces and angles ––––––
-def subspace_angles_to_ref(U_list, group_index, k_subspace=3):
+def subspace_angles_to_ref(U_list: list, group_index: list, k_subspace: int = 3) -> tuple:
     """
     Compute principal angles (degrees) between each trial's subspace to a group reference subspace.
 
@@ -232,7 +232,7 @@ def subspace_angles_to_ref(U_list, group_index, k_subspace=3):
         angles[i] = principal_angle_deg(U, U_ref) if U_ref is not None else np.nan
     return angles, U_ref
 
-def align_all_to_ref(U_list, U_ref):
+def align_all_to_ref(U_list: list, U_ref: np.ndarray) -> list:
     """
     Flips signs of eigenvectors to align each trial's eigenspace basis to U_ref (column-wise).
     Parameters:
