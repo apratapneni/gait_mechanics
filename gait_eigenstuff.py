@@ -7,6 +7,8 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.stats import pearsonr
 from scipy.linalg import subspace_angles
+from sklearn.manifold import MDS
+import matplotlib.pyplot as plt
 
 def corr_matrix_for_trial(trial: np.ndarray, n_joints: int) -> np.ndarray:
     """
@@ -248,3 +250,87 @@ def align_all_to_ref(U_list: list, U_ref: np.ndarray) -> list:
         U_aligned = align_eigenvector_signs(U, U_ref)
         aligned.append(U_aligned)
     return aligned
+
+# –––––– Grassmann manifold embedding via MDS ––––––
+
+def compute_trial_eigenspaces(C_all, n_modes=3):
+    """
+    Compute leading eigenspaces (top-k eigenvectors) for each trial's correlation or Laplacian matrix.
+    
+    Parameters:
+        C_all: np.ndarray of shape [n_trials, n_joints, n_joints]
+        n_modes: number of leading eigenvectors to keep
+        
+    Returns:
+        eigspaces: list of np.ndarray, each [n_joints, n_modes]
+        eigvals: list of np.ndarray, each [n_modes]
+    """
+    eigspaces, eigvals = [], []
+    for C in C_all:
+        # eigh gives sorted eigenvalues ascending; flip for top-k
+        vals, vecs = eigh(C)
+        idx = np.argsort(vals)[::-1]  # descending
+        vals, vecs = vals[idx][:n_modes], vecs[:, idx][:, :n_modes]
+        eigspaces.append(vecs)
+        eigvals.append(vals)
+
+    return eigspaces, eigvals
+
+
+def grassmann_distance(U, V, metric='geodesic'):
+    """
+    Compute Grassmann distance between subspaces U and V.
+    U, V: [n, k] orthonormal eigenvector matrices
+    metric: 'geodesic' or 'chordal'
+    """
+    theta = subspace_angles(U, V)
+    if metric == 'geodesic':
+        return np.linalg.norm(theta)
+    elif metric == 'chordal':
+        return np.linalg.norm(np.sin(theta))
+    else:
+        raise ValueError("metric must be 'geodesic' or 'chordal'")
+
+def grassmann_embedding(eigspaces, metric='geodesic', embed_dim=3, random_state=42):
+    """
+    eigspaces: list of [n, k] orthonormal basis matrices (one per trial)
+    Returns: coords (N, embed_dim), dist_matrix (N, N)
+    """
+    N = len(eigspaces)
+    dist = np.zeros((N, N))
+    for i in range(N):
+        for j in range(i + 1, N):
+            d = grassmann_distance(eigspaces[i], eigspaces[j], metric)
+            dist[i, j] = dist[j, i] = d
+
+    mds = MDS(n_components=embed_dim, dissimilarity='precomputed', random_state=random_state)
+    coords = mds.fit_transform(dist)
+    return coords, dist
+
+# Example use
+# eigspaces = list of (n_joints, k_modes) matrices, e.g., top-3 eigenvectors per trial
+# group_labels = ['C','C','P','P',...]
+
+def visualize_grassmann(eigspaces: list, group_labels: list) -> None:
+    """
+    Visualize Grassmann manifold embedding of eigenspaces with group labels.
+    Parameters:
+        eigspaces (list): list of [n_joints, k] orthonormal basis matrices
+        group_labels (list): list of group labels corresponding to each eigenspace
+    Returns:
+        None (displays a 3D scatter plot)
+    """
+    coords_mds, dist = grassmann_embedding(eigspaces, metric='geodesic')
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    unique_groups = list(set(group_labels))
+    colors = plt.cm.get_cmap('tab10', len(unique_groups))
+    for i, group in enumerate(unique_groups):
+        idx = [j for j, g in enumerate(group_labels) if g == group]
+        ax.scatter(coords_mds[idx, 0], coords_mds[idx, 1], coords_mds[idx, 2], label=group, color=colors(i))
+    ax.set_title('Grassmann Manifold Embedding of Eigenspaces')
+    ax.set_xlabel('MDS Dimension 1')
+    ax.set_ylabel('MDS Dimension 2')
+    ax.set_zlabel('MDS Dimension 3')
+    ax.legend()
+    plt.show()
