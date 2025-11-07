@@ -1,14 +1,13 @@
 # this script does a bunch of weird linear algebra on coordination matrices of gait trials
 
 import numpy as np
-import pickle
 from numpy.linalg import eigh
-import pandas as pd
 from tqdm import tqdm
-from scipy.stats import pearsonr
 from scipy.linalg import subspace_angles
 from sklearn.manifold import MDS
 import matplotlib.pyplot as plt
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score
 
 def corr_matrix_for_trial(trial: np.ndarray, n_joints: int) -> np.ndarray:
     """
@@ -92,6 +91,15 @@ def topk_eig(C_or_L: np.ndarray, k: int, largest: bool = True) -> tuple:
         vals = vals[::-1]
         vecs = vecs[:, ::-1]
     return vals[:k], vecs[:, :k], vals, vecs
+
+def compute_eigenspaces(C_all: np.ndarray, k:int = 3) -> list:
+    """Computes the top-k eigenvector bases for each trial's covariance matrix."""
+    U_list = []
+    for i in tqdm(range(C_all.shape[0])):
+        C = C_all[i]
+        _, U_k, _, _ = topk_eig(C, k=k, largest=True)
+        U_list.append(U_k)
+    return U_list
 
 def normalized_laplacian(W: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """Computes the normalized graph Laplacian from an adjacency matrix W."""
@@ -307,10 +315,6 @@ def grassmann_embedding(eigspaces, metric='geodesic', embed_dim=3, random_state=
     coords = mds.fit_transform(dist)
     return coords, dist
 
-# Example use
-# eigspaces = list of (n_joints, k_modes) matrices, e.g., top-3 eigenvectors per trial
-# group_labels = ['C','C','P','P',...]
-
 def visualize_grassmann(eigspaces: list, group_labels: list) -> None:
     """
     Visualize Grassmann manifold embedding of eigenspaces with group labels.
@@ -320,17 +324,76 @@ def visualize_grassmann(eigspaces: list, group_labels: list) -> None:
     Returns:
         None (displays a 3D scatter plot)
     """
-    coords_mds, dist = grassmann_embedding(eigspaces, metric='geodesic')
+    coords_mds, dist = grassmann_embedding(eigspaces, metric='geodesic', embed_dim=3)
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
     unique_groups = list(set(group_labels))
     colors = plt.cm.get_cmap('tab10', len(unique_groups))
-    for i, group in enumerate(unique_groups):
+    for i, group in tqdm(enumerate(unique_groups)):
         idx = [j for j, g in enumerate(group_labels) if g == group]
         ax.scatter(coords_mds[idx, 0], coords_mds[idx, 1], coords_mds[idx, 2], label=group, color=colors(i))
     ax.set_title('Grassmann Manifold Embedding of Eigenspaces')
-    ax.set_xlabel('MDS Dimension 1')
-    ax.set_ylabel('MDS Dimension 2')
-    ax.set_zlabel('MDS Dimension 3')
+    ax.set_xlabel('MDS 1')
+    ax.set_ylabel('MDS 2')
+    ax.set_zlabel('MDS 3')
     ax.legend()
+    plt.show()
+
+# –––––– Subspace clustering ––––––
+
+def subspace_distance_matrix(eigspaces: list, metric='geodesic') -> np.ndarray:
+    """
+    Compute pairwise Grassmann distance matrix between eigenspaces.
+    
+    Parameters:
+        eigspaces (list): list of [n_joints, k] orthonormal basis matrices
+        metric (str): 'geodesic' or 'chordal'
+        
+    Returns:
+        dist_matrix (np.ndarray): [n_trials, n_trials] pairwise distance matrix
+    """
+    N = len(eigspaces)
+    dist_matrix = np.zeros((N, N))
+    for i in tqdm(range(N)):
+        for j in range(i + 1, N):
+            d = grassmann_distance(eigspaces[i], eigspaces[j], metric)
+            dist_matrix[i, j] = dist_matrix[j, i] = d
+    return dist_matrix
+
+def cluster_eigenspaces(dist_matrix: np.ndarray, n_clusters: int) -> tuple:
+    """
+    Cluster eigenspaces based on pairwise distance matrix using Agglomerative Clustering.
+    
+    Parameters:
+        dist_matrix (np.ndarray): [n_trials, n_trials] pairwise distance matrix
+        n_clusters (int): number of clusters to form
+        
+    Returns:
+        labels (np.ndarray): [n_trials,] cluster labels for each eigenspace
+        sil (float): silhouette score of the clustering
+    """
+    clustering = AgglomerativeClustering(n_clusters=n_clusters, metric='precomputed', linkage='average')
+    labels = clustering.fit_predict(dist_matrix)
+    sil = silhouette_score(dist_matrix, labels, metric='precomputed')
+    return labels, sil
+
+def visualize_clusters(dist_matrix: np.ndarray, labels: np.ndarray, title='MDS of Clustered Eigenspaces') -> None:
+    """
+    Visualize clustered eigenspaces in 2D MDS embedding.
+    
+    Parameters:
+        dist_matrix (np.ndarray): [n_trials, n_trials] pairwise distance matrix
+        labels (np.ndarray): [n_trials,] cluster labels for each eigenspace
+    Returns:
+        None
+    """
+    mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
+    coords = mds.fit_transform(dist_matrix)
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(coords[:, 0], coords[:, 1], c=labels, cmap='tab10')
+    plt.title(title)
+    plt.xlabel('MDS 1')
+    plt.ylabel('MDS 2')
+    plt.colorbar(label='Cluster Label')
     plt.show()
